@@ -10,6 +10,7 @@ from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.feature_extraction.text import TfidfVectorizer
 import nltk
 from nltk.sentiment import SentimentIntensityAnalyzer
+import plotly.express as px
 
 # Descargar el léxico de VADER
 nltk.download('vader_lexicon')
@@ -146,7 +147,35 @@ with tab3:
 
 # Pestaña 4: Gráficos Adicionales
 with tab4:
-    st.header("Distribución de Sentimientos en los Tweets")
+    
+    
+    # Grafico de cantidad de tweets de No Desastres vs Desastres
+    st.subheader("Cantidad de Tweets de No Desastres vs Desastres")
+
+    # Contar el número de tweets relacionados con desastres y los que no lo son
+    disaster_counts = data['target'].value_counts()
+
+    # Crear el gráfico de barras
+    fig, ax = plt.subplots()
+    bars = ax.bar(disaster_counts.index, disaster_counts.values, color=['#2F2777', '#38B586'])
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels(['No Desastre', 'Desastre'])
+    ax.set_xlabel('Categoría de Tweet')
+    ax.set_ylabel('Cantidad')
+    ax.set_title('Cantidad de Tweets de No Desastres vs Desastres')
+
+    # Establecer el límite del eje y hasta 5000
+    ax.set_ylim(0, 5000)
+
+    # Agregar las cantidades encima de las barras
+    for bar in bars:
+        yval = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width()/2, yval + 5, int(yval), ha='center', va='bottom')
+
+    # Mostrar el gráfico en Streamlit
+    st.pyplot(fig)
+    
+    st.subheader("Distribución de Sentimientos en los Tweets")
 
     # Crear la columna 'sentiment_category' basada en compound_vader
     data['sentiment_category'] = pd.cut(data['compound_vader'], 
@@ -168,4 +197,39 @@ with tab4:
 
     # Mostrar el gráfico en Streamlit
     st.pyplot(fig)
+    
+    st.subheader("Distribución Global de Tweets sobre Desastres")
+    manual_locations = {
+        'New York, USA': [40.7128, -74.0060],
+        'London, UK': [51.5074, -0.1278],
+        'Los Angeles, California': [34.0522, -118.2437],
+        'United States': [37.0902, -95.7129],
+        'Canada': [56.1304, -106.3468],
+        'Nigeria': [9.0820, 8.6753],
+        'India': [20.5937, 78.9629],
+        'Mumbai': [19.0760, 72.8777],
+        'Washington, DC': [38.9072, -77.0369],
+        'Kenya': [-1.2921, 36.8219]
+    }
+
+    # Crear el DataFrame con estas ubicaciones manuales y sus coordenadas
+    manual_location_df = pd.DataFrame.from_dict(manual_locations, orient='index', columns=['Latitude', 'Longitude']).reset_index()
+    manual_location_df.columns = ['Location', 'Latitude', 'Longitude']
+
+    # Asignar un conteo manual de tweets basado en los datos originales
+    manual_location_df['Count'] = [71, 45, 26, 104, 29, 28, 24, 22, 21, 20]
+
+    # Crear un mapamundi interactivo con colores personalizados
+    fig_map = px.scatter_geo(manual_location_df,
+                             lat='Latitude',
+                             lon='Longitude',
+                             hover_name='Location',
+                             size='Count',
+                             color='Count',  # Usar la cantidad para definir el color
+                             color_continuous_scale=[[0, 'lightblue'], [0.25, 'green'], [0.5, 'yellow'], [1, 'red']],  # Escala personalizada
+                             scope='world',  # Cambiamos a escala mundial
+                             title='Distribución Global de Tweets sobre Desastres')
+
+    # Mostrar el gráfico interactivo en Streamlit
+    st.plotly_chart(fig_map)
 
