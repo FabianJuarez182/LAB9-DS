@@ -8,9 +8,47 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.feature_extraction.text import TfidfVectorizer
+import nltk
+from nltk.sentiment import SentimentIntensityAnalyzer
+
+# Descargar el léxico de VADER
+nltk.download('vader_lexicon')
+
+# Inicializar el analizador de sentimiento VADER
+sia = SentimentIntensityAnalyzer()
 
 # Cargar datos
 data = pd.read_csv("train.csv")
+
+# Función para obtener los puntajes de sentimiento con VADER
+def get_vader_sentiment_scores(tweet):
+    return sia.polarity_scores(tweet)
+
+# Aplicar el análisis de sentimiento a cada tweet
+data['vader_scores'] = data['text'].apply(get_vader_sentiment_scores)
+
+# Extraer las puntuaciones de negatividad, neutralidad, positividad y compound
+data['negativity_vader'] = data['vader_scores'].apply(lambda x: x['neg'])
+data['neutrality_vader'] = data['vader_scores'].apply(lambda x: x['neu'])
+data['positivity_vader'] = data['vader_scores'].apply(lambda x: x['pos'])
+data['compound_vader'] = data['vader_scores'].apply(lambda x: x['compound'])
+
+# Clasificar los tweets en positivo, negativo o neutral basado en el score compound
+data['sentiment_vader'] = data['compound_vader'].apply(lambda x: 'Positive' if x > 0 else ('Negative' if x < 0 else 'Neutral'))
+
+# Inicializar listas vacías para los tweets
+negative_tweets = []
+positive_tweets = []
+neutral_tweets = []
+
+# Clasificar los tweets en las listas según el sentimiento
+for index, row in data.iterrows():
+    if row['sentiment_vader'] == 'Negative':
+        negative_tweets.append(row['text'])
+    elif row['sentiment_vader'] == 'Positive':
+        positive_tweets.append(row['text'])
+    else:
+        neutral_tweets.append(row['text'])
 
 # Preprocesamiento de textos
 vectorizer = TfidfVectorizer(stop_words='english', max_features=1000)
@@ -108,10 +146,26 @@ with tab3:
 
 # Pestaña 4: Gráficos Adicionales
 with tab4:
-    st.header("Gráficos Adicionales")
-    st.write("Aquí puedes agregar gráficos adicionales o visualizaciones interactivas.")
-    # Ejemplo de un gráfico vacío para mostrar que puedes añadir más contenido en el futuro
-    fig, ax = plt.subplots()
-    ax.plot([1, 2, 3], [1, 4, 9])
-    ax.set_title("Ejemplo de Gráfico")
+    st.header("Distribución de Sentimientos en los Tweets")
+
+    # Crear la columna 'sentiment_category' basada en compound_vader
+    data['sentiment_category'] = pd.cut(data['compound_vader'], 
+                                        bins=[-float('inf'), -0.75, -0.25, 0.25, 0.75, float('inf')],
+                                        labels=['Más Negativos', 'Negativos', 'Neutrales', 'Positivos', 'Más Positivos'],
+                                        include_lowest=True)
+
+    # Contar la cantidad de tweets por categoría de sentimiento
+    category_counts = data['sentiment_category'].value_counts().sort_index()
+
+    # Crear el gráfico de barras
+    fig, ax = plt.subplots(figsize=(8, 5))
+    category_counts.plot(kind='bar', color=['#D0021B', '#F49045', '#AEB8BC', '#8BD646', '#5AC864'], ax=ax)
+    ax.set_title('Distribución de Sentimientos en los Tweets')
+    ax.set_xlabel('Categoría de Sentimiento')
+    ax.set_ylabel('Número de Tweets')
+    ax.set_xticklabels(category_counts.index, rotation=45)
+    plt.tight_layout()
+
+    # Mostrar el gráfico en Streamlit
     st.pyplot(fig)
+
