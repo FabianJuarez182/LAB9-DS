@@ -11,6 +11,10 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 import nltk
 from nltk.sentiment import SentimentIntensityAnalyzer
 import plotly.express as px
+import re
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
+from collections import Counter
+import string
 
 # Descargar el léxico de VADER
 nltk.download('vader_lexicon')
@@ -21,12 +25,28 @@ sia = SentimentIntensityAnalyzer()
 # Cargar datos
 data = pd.read_csv("train.csv")
 
-# Función para obtener los puntajes de sentimiento con VADER
-def get_vader_sentiment_scores(tweet):
-    return sia.polarity_scores(tweet)
+# Función para limpiar el texto
+def clean_text(text):
+    text = text.lower()  # Convertir a minúsculas
+    text = re.sub(r'http\S+|www\S+|https\S+', '', text, flags=re.MULTILINE)  # Eliminar URLs
+    text = re.sub(r'\@\w+|\#|\d+', '', text)  # Quitar hashtags, menciones, y números
+    text = text.translate(str.maketrans('', '', string.punctuation))  # Eliminar signos de puntuación
+    text = ' '.join([word for word in text.split() if word not in ENGLISH_STOP_WORDS])  # Eliminar stopwords
+    return text
 
-# Aplicar el análisis de sentimiento a cada tweet
-data['vader_scores'] = data['text'].apply(get_vader_sentiment_scores)
+# Aplicar la función de limpieza a la columna de texto antes de cualquier operación
+data['cleaned_text'] = data['text'].apply(clean_text)
+
+# Separar en tweets de desastres y no desastres para obtener palabras más comunes
+disaster_tweets = data[data['target'] == 1]['cleaned_text']
+non_disaster_tweets = data[data['target'] == 0]['cleaned_text']
+
+# Calcular la frecuencia de las palabras
+disaster_words = Counter(" ".join(disaster_tweets).split())
+non_disaster_words = Counter(" ".join(non_disaster_tweets).split())
+
+# Aplicar el análisis de sentimiento a cada tweet después de la limpieza
+data['vader_scores'] = data['cleaned_text'].apply(sia.polarity_scores)
 
 # Extraer las puntuaciones de negatividad, neutralidad, positividad y compound
 data['negativity_vader'] = data['vader_scores'].apply(lambda x: x['neg'])
@@ -37,23 +57,9 @@ data['compound_vader'] = data['vader_scores'].apply(lambda x: x['compound'])
 # Clasificar los tweets en positivo, negativo o neutral basado en el score compound
 data['sentiment_vader'] = data['compound_vader'].apply(lambda x: 'Positive' if x > 0 else ('Negative' if x < 0 else 'Neutral'))
 
-# Inicializar listas vacías para los tweets
-negative_tweets = []
-positive_tweets = []
-neutral_tweets = []
-
-# Clasificar los tweets en las listas según el sentimiento
-for index, row in data.iterrows():
-    if row['sentiment_vader'] == 'Negative':
-        negative_tweets.append(row['text'])
-    elif row['sentiment_vader'] == 'Positive':
-        positive_tweets.append(row['text'])
-    else:
-        neutral_tweets.append(row['text'])
-
-# Preprocesamiento de textos
+# Preprocesamiento de textos para TfidfVectorizer
 vectorizer = TfidfVectorizer(stop_words='english', max_features=1000)
-X_vectorized = vectorizer.fit_transform(data['text'])
+X_vectorized = vectorizer.fit_transform(data['cleaned_text'])
 y = data['target']
 
 # Split del conjunto de datos
@@ -147,34 +153,26 @@ with tab3:
 
 # Pestaña 4: Gráficos Adicionales
 with tab4:
-    
-    
-    # Grafico de cantidad de tweets de No Desastres vs Desastres
+    # Gráfico de cantidad de tweets de No Desastres vs Desastres con Plotly
     st.subheader("Cantidad de Tweets de No Desastres vs Desastres")
 
     # Contar el número de tweets relacionados con desastres y los que no lo son
-    disaster_counts = data['target'].value_counts()
+    disaster_counts = data['target'].value_counts().reset_index()
+    disaster_counts.columns = ['Target', 'Count']
+    disaster_counts['Target'] = disaster_counts['Target'].map({0: 'No Desastre', 1: 'Desastre'})
 
-    # Crear el gráfico de barras
-    fig, ax = plt.subplots()
-    bars = ax.bar(disaster_counts.index, disaster_counts.values, color=['#2F2777', '#38B586'])
-    ax.set_xticks([0, 1])
-    ax.set_xticklabels(['No Desastre', 'Desastre'])
-    ax.set_xlabel('Categoría de Tweet')
-    ax.set_ylabel('Cantidad')
-    ax.set_title('Cantidad de Tweets de No Desastres vs Desastres')
+    # Crear el gráfico de barras interactivo
+    fig_disaster = px.bar(disaster_counts, x='Target', y='Count', 
+                          color='Target', 
+                          color_discrete_sequence=['#2F2777', '#38B586'], 
+                          title='Cantidad de Tweets de No Desastres vs Desastres',
+                          labels={'Target': 'Categoría de Tweet', 'Count': 'Cantidad'})
+    fig_disaster.update_layout(yaxis_range=[0, 5000])  # Límite del eje y
 
-    # Establecer el límite del eje y hasta 5000
-    ax.set_ylim(0, 5000)
+    # Mostrar el gráfico interactivo en Streamlit
+    st.plotly_chart(fig_disaster)
 
-    # Agregar las cantidades encima de las barras
-    for bar in bars:
-        yval = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2, yval + 5, int(yval), ha='center', va='bottom')
-
-    # Mostrar el gráfico en Streamlit
-    st.pyplot(fig)
-    
+    # Gráfico de distribución de sentimientos con Plotly
     st.subheader("Distribución de Sentimientos en los Tweets")
 
     # Crear la columna 'sentiment_category' basada en compound_vader
@@ -184,20 +182,20 @@ with tab4:
                                         include_lowest=True)
 
     # Contar la cantidad de tweets por categoría de sentimiento
-    category_counts = data['sentiment_category'].value_counts().sort_index()
+    category_counts = data['sentiment_category'].value_counts().reset_index()
+    category_counts.columns = ['Sentiment', 'Count']
 
-    # Crear el gráfico de barras
-    fig, ax = plt.subplots(figsize=(8, 5))
-    category_counts.plot(kind='bar', color=['#D0021B', '#F49045', '#AEB8BC', '#8BD646', '#5AC864'], ax=ax)
-    ax.set_title('Distribución de Sentimientos en los Tweets')
-    ax.set_xlabel('Categoría de Sentimiento')
-    ax.set_ylabel('Número de Tweets')
-    ax.set_xticklabels(category_counts.index, rotation=45)
-    plt.tight_layout()
+    # Crear el gráfico de barras interactivo
+    fig_sentiment = px.bar(category_counts, x='Sentiment', y='Count', 
+                           color='Sentiment', 
+                           color_discrete_sequence=['#D0021B', '#F49045', '#AEB8BC', '#8BD646', '#5AC864'], 
+                           title='Distribución de Sentimientos en los Tweets',
+                           labels={'Sentiment': 'Categoría de Sentimiento', 'Count': 'Número de Tweets'})
 
-    # Mostrar el gráfico en Streamlit
-    st.pyplot(fig)
-    
+    # Mostrar el gráfico interactivo en Streamlit
+    st.plotly_chart(fig_sentiment)
+
+    # Distribución Global de Tweets sobre Desastres con Plotly
     st.subheader("Distribución Global de Tweets sobre Desastres")
     manual_locations = {
         'New York, USA': [40.7128, -74.0060],
@@ -232,4 +230,40 @@ with tab4:
 
     # Mostrar el gráfico interactivo en Streamlit
     st.plotly_chart(fig_map)
+    
+    # Gráfico de palabras más frecuentes en tweets de desastres
+    st.subheader("Palabras más comunes en tweets de desastres")
+    
+    # Obtener las palabras más comunes en tweets de desastres (simulando disaster_words)
+    common_disaster_words = disaster_words.most_common(20)  # Simula tener los datos de las palabras más frecuentes
+    
+    # Convertir las palabras en DataFrame para usar con Plotly
+    disaster_words_df = pd.DataFrame(common_disaster_words, columns=['Word', 'Count'])
+    
+    # Crear el gráfico de barras interactivo para palabras más comunes en tweets de desastres
+    fig_disaster_words = px.bar(disaster_words_df, x='Count', y='Word', 
+                                orientation='h', 
+                                title='Palabras más frecuentes en tweets de desastres',
+                                labels={'Count': 'Frecuencia', 'Word': 'Palabra'})
+    
+    # Mostrar el gráfico interactivo en Streamlit
+    st.plotly_chart(fig_disaster_words)
+
+    # Gráfico de palabras más frecuentes en tweets que no son de desastres
+    st.subheader("Palabras más comunes en tweets que no son de desastres")
+    
+    # Obtener las palabras más comunes en tweets que no son de desastres (simulando non_disaster_words)
+    common_non_disaster_words = non_disaster_words.most_common(20)  # Simula tener los datos de las palabras más frecuentes
+    
+    # Convertir las palabras en DataFrame para usar con Plotly
+    non_disaster_words_df = pd.DataFrame(common_non_disaster_words, columns=['Word', 'Count'])
+    
+    # Crear el gráfico de barras interactivo para palabras más comunes en tweets que no son de desastres
+    fig_non_disaster_words = px.bar(non_disaster_words_df, x='Count', y='Word', 
+                                    orientation='h', 
+                                    title='Palabras más frecuentes en tweets que no son de desastres',
+                                    labels={'Count': 'Frecuencia', 'Word': 'Palabra'})
+    
+    # Mostrar el gráfico interactivo en Streamlit
+    st.plotly_chart(fig_non_disaster_words)
 
