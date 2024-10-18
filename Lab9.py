@@ -16,6 +16,33 @@ from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 from collections import Counter
 import string
 
+# Inyectar CSS personalizado para aplicar la paleta de colores
+st.markdown("""
+    <style>
+    body {
+        background-color: #F9F8F2; /* Fondo blanco cálido */
+    }
+    .css-1d391kg { /* Fondo principal de la app */
+        background-color: #F9F8F2 !important;
+    }
+    .css-18e3th9 { /* Pestañas de la app */
+        background-color: #165A2B !important;
+        color: white !important;
+    }
+    .stButton>button { /* Estilo de los botones */
+        background-color: #5D8D6C !important;
+        color: white !important;
+        border-radius: 8px !important;
+    }
+    h1, h2, h3 { /* Colores para los encabezados */
+        color: #165A2B !important;
+    }
+    .stTabs { /* Estilo para las pestañas */
+        color: #5D8D6C !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 # Descargar el léxico de VADER
 nltk.download('vader_lexicon')
 
