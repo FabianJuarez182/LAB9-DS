@@ -15,6 +15,7 @@ import re
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 from collections import Counter
 import string
+from wordcloud import WordCloud
 
 # Inyectar CSS personalizado para aplicar la paleta de colores
 st.markdown("""
@@ -61,6 +62,33 @@ def clean_text(text):
     text = ' '.join([word for word in text.split() if word not in ENGLISH_STOP_WORDS])  # Eliminar stopwords
     return text
 
+# Crear una función para mostrar la nube de palabras
+def plot_wordcloud(word_counts, title):
+    wordcloud = WordCloud(width=800, height=400, background_color='white').generate_from_frequencies(word_counts)
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.imshow(wordcloud, interpolation='bilinear')
+    ax.axis('off')
+    ax.set_title(title, fontsize=16)
+    return fig
+
+# Función para extraer hashtags de un texto
+def extract_hashtags(text):
+    return re.findall(r"#(\w+)", text)
+
+# Extraer los hashtags de los tweets
+data['hashtags'] = data['text'].apply(extract_hashtags)
+
+# Crear una lista de todos los hashtags
+all_hashtags = [hashtag for hashtags_list in data['hashtags'] for hashtag in hashtags_list]
+
+# Contar la frecuencia de los hashtags
+hashtag_counts = Counter(all_hashtags)
+
+# Crear un DataFrame con los hashtags más comunes
+top_hashtags = hashtag_counts.most_common(10)  # Los 10 hashtags más comunes
+hashtag_df = pd.DataFrame(top_hashtags, columns=['Hashtag', 'Frecuencia'])
+
+
 # Aplicar la función de limpieza a la columna de texto antes de cualquier operación
 data['cleaned_text'] = data['text'].apply(clean_text)
 
@@ -88,6 +116,9 @@ data['sentiment_vader'] = data['compound_vader'].apply(lambda x: 'Positive' if x
 vectorizer = TfidfVectorizer(stop_words='english', max_features=1000)
 X_vectorized = vectorizer.fit_transform(data['cleaned_text'])
 y = data['target']
+
+# Añadir columna con la longitud de cada tweet
+data['text_length'] = data['cleaned_text'].apply(len)
 
 # Split del conjunto de datos
 X_train, X_test, y_train, y_test = train_test_split(X_vectorized, y, test_size=0.2, random_state=42)
@@ -294,3 +325,48 @@ with tab4:
     # Mostrar el gráfico interactivo en Streamlit
     st.plotly_chart(fig_non_disaster_words)
 
+    st.subheader("Nube de palabras de tweets de desastres")
+    
+    # Crear nube de palabras para tweets de desastres
+    fig_disaster = plot_wordcloud(disaster_words, "Nube de palabras - Tweets de Desastres")
+    
+    # Mostrar en Streamlit
+    st.pyplot(fig_disaster)
+
+    st.subheader("Nube de palabras de tweets que no son de desastres")
+    
+    # Crear nube de palabras para tweets que no son de desastres
+    fig_non_disaster = plot_wordcloud(non_disaster_words, "Nube de palabras - Tweets que no son de Desastres")
+    
+    # Mostrar en Streamlit
+    st.pyplot(fig_non_disaster)
+    
+    st.subheader("Longitud del texto y clasificación del tweet")
+
+    # Crear el gráfico de violín o caja usando seaborn
+    fig, ax = plt.subplots(figsize=(8, 6))
+    sns.violinplot(x='target', y='text_length', data=data, palette='Pastel1', ax=ax)
+
+    # Configuración de etiquetas y título
+    ax.set_title("Longitud del texto y la clasificación del tweet", fontsize=14)
+    ax.set_xlabel("Clasificación del tweet", fontsize=12)
+    ax.set_ylabel("Longitud del tweet", fontsize=12)
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels(['No Desastre', 'Desastre'])
+
+    # Mostrar gráfico en Streamlit
+    st.pyplot(fig)
+
+    st.subheader("Frecuencia de hashtags en los tweets")
+
+    # Crear gráfico de barras horizontal con los hashtags más frecuentes
+    fig, ax = plt.subplots(figsize=(8, 6))
+    sns.barplot(x='Frecuencia', y='Hashtag', data=hashtag_df, palette='pastel', ax=ax)
+
+    # Configuración de etiquetas y título
+    ax.set_title("Frecuencia de hashtags en los tweets", fontsize=14)
+    ax.set_xlabel("Frecuencia", fontsize=12)
+    ax.set_ylabel("Hashtag", fontsize=12)
+
+    # Mostrar gráfico en Streamlit
+    st.pyplot(fig)
